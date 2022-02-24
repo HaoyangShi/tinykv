@@ -25,9 +25,11 @@ import (
 // RaftStorage is an implementation of `Storage` (see tikv/server.go) backed by a Raft node. It is part of a Raft network.
 // By using Raft, reads and writes are consistent with other nodes in the TinyKV instance.
 type RaftStorage struct {
-	engines *engine_util.Engines
-	config  *config.Config
+	// 一个节点中最基本的东西
+	engines *engine_util.Engines // 记录节点KVDB和RaftDB的元信息
+	config  *config.Config  // 记录当前配置
 
+	// Raft中相关信息
 	node          *raftstore.Node
 	snapManager   *snap.SnapManager
 	raftRouter    *raftstore.RaftstoreRouter
@@ -35,6 +37,7 @@ type RaftStorage struct {
 	resolveWorker *worker.Worker
 	snapWorker    *worker.Worker
 
+	// waitgroup的讲解：https://segmentfault.com/a/1190000037780837
 	wg sync.WaitGroup
 }
 

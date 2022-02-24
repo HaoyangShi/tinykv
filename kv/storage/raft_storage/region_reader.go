@@ -20,6 +20,7 @@ func NewRegionReader(txn *badger.Txn, region metapb.Region) *RegionReader {
 }
 
 func (r *RegionReader) GetCF(cf string, key []byte) ([]byte, error) {
+	// 检查是否在此节点的保存区域内有此键值的内容
 	if err := util.CheckKeyInRegion(key, r.region); err != nil {
 		return nil, err
 	}

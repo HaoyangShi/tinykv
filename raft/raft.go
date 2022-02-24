@@ -161,9 +161,6 @@ type Raft struct {
 
 // newRaft return a raft peer with the given config
 func newRaft(c *Config) *Raft {
-	if err := c.validate(); err != nil {
-		panic(err.Error())
-	}
 	// Your Code Here (2A).
 	return nil
 }

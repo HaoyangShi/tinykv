@@ -54,6 +54,7 @@ func main() {
 	} else {
 		storage = standalone_storage.NewStandAloneStorage(conf)
 	}
+
 	if err := storage.Start(); err != nil {
 		log.Fatal(err)
 	}
