@@ -72,10 +72,22 @@ func (s *StandAloneStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader,
 	// 用Badger.Txn 进行读，
 	//在Raft_server中是由callback中的事务担任
 	// 所以在standalone中，需要另外创建一个事务用于读
-	return nil, nil
+	txn :=s.engines.Kv.NewTransaction(false)
+	return NewStandAloneReader(txn), nil
 }
 
 func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) error {
 	// Your Code Here (1).
-	return nil
+	StandAloneWB := new(engine_util.WriteBatch)
+	for _,m :=range batch{
+		switch m.Data.(type){
+		case storage.Put:
+			put := m.Data.(storage.Put)
+			StandAloneWB.SetCF(put.Cf,put.Key,put.Value)
+		case storage.Delete:
+			delete:=m.Data.(storage.Delete)
+			StandAloneWB.DeleteCF(delete.Cf,delete.Key)
+		}
+	}
+	return StandAloneWB.WriteToDB(s.engines.Kv)
 }

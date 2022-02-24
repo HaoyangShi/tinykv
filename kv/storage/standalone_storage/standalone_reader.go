@@ -26,3 +26,50 @@ func (r *StandAloneReader) GetCF(cf string, key []byte)([]byte, error){
 	return val,err
 }
 
+
+
+func (r *StandAloneReader) IterCF(cf string) engine_util.DBIterator{
+	return NewStandAloneIterator(engine_util.NewCFIterator(cf,r.txn))
+}
+
+func (r *StandAloneReader) Close(){
+	r.txn.Discard()
+}
+
+type StandAloneIterator struct {
+	iter *engine_util.BadgerIterator
+}
+
+func (it *StandAloneIterator) Valid() bool {
+	if !it.iter.Valid(){
+		return false
+	}
+	return true
+}
+
+func NewStandAloneIterator(iter *engine_util.BadgerIterator) *StandAloneIterator{
+	return &StandAloneIterator{
+		iter:iter,
+	}
+}
+
+
+func (it *StandAloneIterator) Item() engine_util.DBItem{
+	return it.iter.Item()
+}
+
+func (it *StandAloneIterator)Close(){
+	it.iter.Close()
+}
+
+func (it *StandAloneIterator) Next()  {
+	it.iter.Next()
+}
+
+func (it *StandAloneIterator) Seek(key []byte){
+	it.iter.Seek(key)
+}
+
+func (it *StandAloneIterator) Rewind(){
+	it.iter.Rewind()
+}
