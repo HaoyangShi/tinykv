@@ -78,22 +78,7 @@ func checkClntAppends(t *testing.T, clnt int, v string, count int) {
 func checkConcurrentAppends(t *testing.T, v string, counts []int) {
 	nclients := len(counts)
 	for i := 0; i < nclients; i++ {
-		lastoff := -1
-		for j := 0; j < counts[i]; j++ {
-			wanted := "x " + strconv.Itoa(i) + " " + strconv.Itoa(j) + " y"
-			off := strings.Index(v, wanted)
-			if off < 0 {
-				t.Fatalf("%v missing element %v in Append result %v", i, wanted, v)
-			}
-			off1 := strings.LastIndex(v, wanted)
-			if off1 != off {
-				t.Fatalf("duplicate element %v in Append result", wanted)
-			}
-			if off <= lastoff {
-				t.Fatalf("wrong order for element %v in Append result", wanted)
-			}
-			lastoff = off
-		}
+		checkClntAppends(t, i, v, counts[i])
 	}
 }
 
@@ -155,7 +140,7 @@ func confchanger(t *testing.T, cluster *Cluster, ch chan bool, done *int32) {
 // - If crash is set, the servers restart after the period is over.
 // - If partitions is set, the test repartitions the network concurrently between the servers.
 // - If maxraftlog is a positive number, the count of the persistent log for Raft shouldn't exceed 2*maxraftlog.
-// - If confchangee is set, the cluster will schedule random conf change concurrently.
+// - If confchange is set, the cluster will schedule random conf change concurrently.
 // - If split is set, split region when size exceed 1024 bytes.
 func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash bool, partitions bool, maxraftlog int, confchange bool, split bool) {
 	title := "Test: "
@@ -444,7 +429,7 @@ func TestPersistPartition2B(t *testing.T) {
 }
 
 func TestPersistPartitionUnreliable2B(t *testing.T) {
-	// Test: unreliable net, restarts, partitions, many clients (3A) ...
+	// Test: unreliable net, restarts, partitions, many clients (2B) ...
 	GenericTest(t, "2B", 5, true, true, true, -1, false, false)
 }
 
@@ -610,6 +595,43 @@ func TestBasicConfChange3B(t *testing.T) {
 	MustGetEqual(cluster.engines[2], []byte("k4"), []byte("v4"))
 	MustGetNone(cluster.engines[3], []byte("k1"))
 	MustGetNone(cluster.engines[3], []byte("k4"))
+}
+
+func TestConfChangeRemoveLeader3B(t *testing.T) {
+	cfg := config.NewTestConfig()
+	cluster := NewTestCluster(5, cfg)
+	cluster.Start()
+	defer cluster.Shutdown()
+
+	cluster.MustTransferLeader(1, NewPeer(1, 1))
+	// remove (1,1) and put (k0,v0),  store 1 can not see it
+	cluster.MustRemovePeer(1, NewPeer(1, 1))
+	cluster.MustPut([]byte("k0"), []byte("v0"))
+	MustGetNone(cluster.engines[1], []byte("k0"))
+
+	// rejoin and become leader, now store 1 can see it
+	cluster.MustAddPeer(1, NewPeer(1, 1))
+	cluster.MustTransferLeader(1, NewPeer(1, 1))
+	cluster.MustPut([]byte("k1"), []byte("v1"))
+	MustGetEqual(cluster.engines[1], []byte("k0"), []byte("v0"))
+	MustGetEqual(cluster.engines[1], []byte("k1"), []byte("v1"))
+
+	cluster.MustRemovePeer(1, NewPeer(2, 2))
+	cluster.MustRemovePeer(1, NewPeer(3, 3))
+	cluster.MustRemovePeer(1, NewPeer(4, 4))
+
+	// now only have (1,1) and (5,5), try to remove (1,1)
+	cluster.MustRemovePeer(1, NewPeer(1, 1))
+
+	// now region 1 only has peer: (5, 5)
+	cluster.MustPut([]byte("k2"), []byte("v2"))
+	MustGetNone(cluster.engines[1], []byte("k2"))
+	// now have (1,1) and (5,5)
+	cluster.MustAddPeer(1, NewPeer(1, 1))
+	cluster.MustPut([]byte("k3"), []byte("v3"))
+	// 3 can not see it
+	MustGetNone(cluster.engines[3], []byte("k3"))
+	MustGetEqual(cluster.engines[1], []byte("k3"), []byte("v3"))
 }
 
 func TestConfChangeRecover3B(t *testing.T) {
