@@ -66,8 +66,8 @@ func testUpdateTermFromMessage(t *testing.T, state StateType) {
 	if r.Term != 2 {
 		t.Errorf("term = %d, want %d", r.Term, 2)
 	}
-	if r.State != StateFollower {
-		t.Errorf("state = %v, want %v", r.State, StateFollower)
+	if r.State != state {
+		t.Errorf("state = %v, want %v", r.State, state)
 	}
 }
 
@@ -194,6 +194,7 @@ func TestLeaderElectionInOneRoundRPC2AA(t *testing.T) {
 		for id, vote := range tt.votes {
 			r.Step(pb.Message{From: id, To: 1, Term: r.Term, MsgType: pb.MessageType_MsgRequestVoteResponse, Reject: !vote})
 		}
+		// fmt.Printf("%v, state= %s, want state= %s\n", tt, r.State, tt.state)
 
 		if r.State != tt.state {
 			t.Errorf("#%d: state = %s, want %s", i, r.State, tt.state)
@@ -231,6 +232,7 @@ func TestFollowerVote2AA(t *testing.T) {
 		wmsgs := []pb.Message{
 			{From: 1, To: tt.nvote, Term: 1, MsgType: pb.MessageType_MsgRequestVoteResponse, Reject: tt.wreject},
 		}
+		// fmt.Printf("\n%v\n", msgs)
 		if !reflect.DeepEqual(msgs, wmsgs) {
 			t.Errorf("#%d: msgs = %v, want %v", i, msgs, wmsgs)
 		}
@@ -288,9 +290,11 @@ func testNonleaderElectionTimeoutRandomized(t *testing.T, state StateType) {
 		}
 
 		time := 0
+
 		for len(r.readMessages()) == 0 {
 			r.tick()
 			time++
+
 		}
 		timeouts[time] = true
 	}
@@ -341,12 +345,12 @@ func testNonleadersElectionTimeoutNonconflict(t *testing.T, state StateType) {
 				}
 			}
 		}
+		// fmt.Println()
 		// several rafts time out at the same tick
 		if timeoutNum > 1 {
 			conflicts++
 		}
 	}
-
 	if g := float64(conflicts) / 1000; g > 0.3 {
 		t.Errorf("probability of conflicts = %v, want <= 0.3", g)
 	}
