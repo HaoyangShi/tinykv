@@ -68,6 +68,9 @@ type Storage interface {
 	// so raft state machine could know that Storage needs some time to prepare
 	// snapshot and call Snapshot later.
 	Snapshot() (pb.Snapshot, error)
+	// 获取hardstate中结果
+	GetHardState_Vote() uint64
+	GetHardState_Term() uint64
 }
 
 // MemoryStorage implements the Storage interface backed by an
@@ -159,7 +162,8 @@ func (ms *MemoryStorage) FirstIndex() (uint64, error) {
 }
 
 func (ms *MemoryStorage) firstIndex() uint64 {
-	return ms.ents[0].Index + 1
+	// return ms.ents[0].Index + 1
+	return ms.ents[0].Index
 }
 
 // Snapshot implements the Storage interface.
@@ -270,4 +274,15 @@ func (ms *MemoryStorage) Append(entries []pb.Entry) error {
 			ms.lastIndex(), entries[0].Index)
 	}
 	return nil
+}
+
+func (ms *MemoryStorage) GetHardState_Term() uint64 {
+	ms.Lock()
+	defer ms.Unlock()
+	return ms.hardState.Term
+}
+func (ms *MemoryStorage) GetHardState_Vote() uint64 {
+	ms.Lock()
+	defer ms.Unlock()
+	return ms.hardState.Vote
 }

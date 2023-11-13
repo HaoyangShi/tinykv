@@ -71,16 +71,32 @@ func newLog(storage Storage) *RaftLog {
 	if err != nil {
 		log.Panic("Failed to get storage firstIndex")
 	}
+	// lastIndex为logical_index
 	lastIndex, err := storage.LastIndex()
 	if err != nil {
 		log.Panic("Failed to get storage lastIndex")
 	}
 
-	l.committed = firstIndex - 1
-	l.applied = firstIndex - 1
-	l.stabled = lastIndex + 1
 	l.pendingSnapshot = &pb.Snapshot{}
+
+	stable_ents, _ := storage.Entries(firstIndex+1, lastIndex+1)
 	l.entries = []pb.Entry{}
+	l.entries = append(l.entries, stable_ents...)
+
+	offset := uint64(0)
+	raftLog_storage_firstIndex := uint64(0)
+	raftLog_storage_lastIndex := uint64(0)
+	if len(stable_ents) != 0 {
+		offset = stable_ents[0].Index
+		raftLog_storage_firstIndex = stable_ents[0].Index
+		raftLog_storage_lastIndex = stable_ents[len(stable_ents)-1].Index
+	}
+
+	// firstIndex 和lastIndex都是logical index，基于ms.entries[0].Index
+	l.committed = raftLog_storage_firstIndex - 1 - offset // committed为physical, 根据nextEntries判断
+	l.applied = raftLog_storage_firstIndex - 1 - offset   //applied为physical，根据nextEntries判断
+	l.stabled = raftLog_storage_lastIndex                 // stabled为logical
+
 	return l
 }
 
@@ -102,8 +118,20 @@ func (l *RaftLog) allEntries() []pb.Entry {
 
 // unstableEntries return all the unstable entries
 func (l *RaftLog) unstableEntries() []pb.Entry {
+	// l.stabled 为logical
 	// Your Code Here (2A).
-	return l.entries[l.stabled:]
+	offset := uint64(0)
+	if len(l.entries) != 0 {
+		offset = l.entries[0].Index
+	}
+	phy_stabled := l.stabled - offset
+
+	if phy_stabled+1 <= (uint64(len(l.entries))) {
+		return l.entries[phy_stabled+1:]
+	} else if l.stabled == ^uint64(0) {
+		return l.entries
+	}
+	return nil
 	// return nil
 }
 
@@ -125,25 +153,57 @@ func (l *RaftLog) LastIndex() uint64 {
 }
 
 // Term return the term of the entry in the given index
+// Term中传入的是physical index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
 	if len(l.entries) == 0 {
-		return 0, nil
+		return ^uint64(0), nil
 	}
 	if i >= uint64(len(l.entries)) {
-		return 0, errors.New("index exceeds log index")
+		return ^uint64(0), nil
 	}
 	return l.entries[i].Term, nil
 	// return 0, nil
 }
 
 func (l *RaftLog) AppendEntries(es []pb.Entry) error {
-	lastIndex := l.LastIndex()
 	esFirstIndex := es[0].Index
-	if esFirstIndex > lastIndex+1 {
-		log.Panic("entry hole")
-		return errors.New("entry hole")
+	if len(l.entries) == 0 {
+		l.entries = append(l.entries, es...)
+	} else {
+		offset := l.entries[0].Index
+		physical_lastIndex := l.LastIndex()
+		// logical_lastIndex := l.entries[physical_lastIndex].Index
+		physical_esFirstIndex := esFirstIndex - offset
+
+		physical_match_index := physical_esFirstIndex - 1
+		es_match_index := -1
+		for _, ent := range es {
+			phy_ent_index := ent.Index - offset
+			l_term, _ := l.Term(phy_ent_index)
+			if l_term == ^uint64(0) || l_term != ent.Term {
+				break
+			} else {
+				physical_match_index++
+				es_match_index++
+			}
+		}
+		left_length := physical_esFirstIndex + uint64(len(es)) - physical_match_index - 1
+		if left_length == 0 {
+			return nil
+		}
+
+		if physical_esFirstIndex > physical_lastIndex+1 {
+			return errors.New("entry hole")
+		}
+
+		if physical_match_index == ^uint64(0) && l.stabled != ^uint64(0) {
+			l.stabled = ^uint64(0)
+		} else if physical_match_index+offset < l.stabled {
+			l.stabled = physical_match_index + offset
+		}
+
+		l.entries = append(l.entries[:physical_match_index+1], es[es_match_index+1:]...)
 	}
-	l.entries = append(l.entries[:esFirstIndex], es...)
 	return nil
 }
